@@ -140,6 +140,7 @@ pub fn codegen(config: Config<'_>, out: impl Write) -> Result<()> {
         "#![allow(clippy::excessive_precision, clippy::manual_range_contains, clippy::absurd_extreme_comparisons, clippy::too_many_arguments)]"
     )?;
     writeln!(&mut w, "#![deny(clippy::arithmetic_side_effects)]")?;
+    writeln!(&mut w, "#![allow(dead_code)]")?;
     writeln!(&mut w)?;
     writeln!(
         &mut w,
@@ -149,6 +150,9 @@ pub fn codegen(config: Config<'_>, out: impl Write) -> Result<()> {
     writeln!(&mut w, "//!")?;
     writeln!(&mut w, "//! - Version: `{:?}`", dbc.version())?;
     writeln!(&mut w)?;
+    writeln!(&mut w, "use tracing::error;")?;
+    writeln!(&mut w, "use once_cell::sync::Lazy;")?;
+    writeln!(&mut w, "use std::sync::RwLock;")?;
     writeln!(&mut w, "use core::ops::BitOr;")?;
     writeln!(&mut w, "use bitvec::prelude::*;")?;
     writeln!(&mut w, "use embedded_can::{{Id, StandardId, ExtendedId}};")?;
@@ -262,7 +266,29 @@ fn render_message(mut w: impl Write, config: &Config<'_>, msg: &Message, dbc: &D
             writeln!(w, "/// {}", line)?;
         }
     }
-    writeln!(w, "#[derive(Clone, Copy)]")?;
+
+    // writeln!(w, "#[allow(dead_code)]")?;
+    // Generate the Lazy static variable with RwLock
+    let static_var_name = msg.message_name()
+        .chars()
+        .flat_map(|c| {
+            if c.is_uppercase() {
+                vec!['_', c.to_ascii_uppercase()]
+            } else {
+                vec![c.to_ascii_uppercase()]
+            }
+        })
+        .skip_while(|&c| c == '_') // Remove leading underscore if any
+        .collect::<String>();
+    writeln!(
+        w,
+        "pub static {}: Lazy<RwLock<{}>> = Lazy::new(|| {{",
+        static_var_name,
+        type_name(msg.message_name())
+    )?;
+    writeln!(w, "    RwLock::new({}::default())", type_name(msg.message_name()))?;
+    writeln!(w, "}});")?;
+    writeln!(w, "#[derive(Clone, Copy ,Default)]")?;
     config.impl_serde.fmt_attr(&mut w, "derive(Serialize)")?;
     config.impl_serde.fmt_attr(&mut w, "derive(Deserialize)")?;
     writeln!(w, "pub struct {} {{", type_name(msg.message_name()))?;
@@ -643,6 +669,7 @@ fn render_set_signal(
                 )?;
                 {
                     let mut w = PadAdapter::wrap(&mut w);
+                    writeln!(w, r##"error!("ParameterOutOfRange value = {{:?}}",value);"##)?;
                     writeln!(
                         w,
                         r##"return Err(CanError::ParameterOutOfRange {{ message_id: {}::MESSAGE_ID }});"##,
