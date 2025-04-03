@@ -420,6 +420,13 @@ fn render_message(mut w: impl Write, config: &Config<'_>, msg: &Message, dbc: &D
                 MultiplexIndicator::MultiplexorAndMultiplexedSignal(_) => {}
             }
         }
+        writeln!(w, "pub fn signal_dump(&self) -> [(&'static str ,String); {}] {{", msg.signals().len())?;
+        writeln!(w, "\t[")?;
+        for signal in msg.signals().iter() {
+            writeln!(w, "\t\t(\"{}\",self.{}().to_string()),", field_name(signal.name()), field_name(signal.name()))?;
+        }
+        writeln!(w, "\t]")?;
+        writeln!(w, "}}")?;
     }
 
     writeln!(w, "}}")?;
